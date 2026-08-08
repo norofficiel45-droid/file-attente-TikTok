@@ -1,120 +1,292 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>File d'attente</title>
-<style>
-html,body{margin:0;background:transparent;overflow:hidden;font-family:Arial,Helvetica,sans-serif;color:#fff}
-.wrap{width:700px;padding:22px;box-sizing:border-box}
-.panel{background:rgba(7,3,18,.94);border:2px solid #b86cff;border-radius:24px;padding:22px;box-shadow:0 0 14px #b86cff,0 0 35px rgba(184,108,255,.45)}
-.title{font-size:42px;font-weight:900;text-align:center;letter-spacing:1px;text-shadow:0 0 12px #b86cff;margin-bottom:18px}
-.box{border:2px solid #9b63ff;border-radius:16px;padding:14px 18px;margin:10px 0;background:rgba(20,8,40,.78)}
-.label{font-size:20px;font-weight:900;margin-bottom:6px}
-.current{border-color:#ff3f9b}
-.current .label{color:#ff55a8}
-.next{border-color:#b86cff}
-.next .label{color:#d09aff}
-.artist{font-size:30px;font-weight:800}
-.row{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.13)}
-.row:last-child{border-bottom:0}
-.num{width:34px;height:34px;border:2px solid #c987ff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px}
-.name{flex:1;font-size:24px;font-weight:750}
-.roses{font-size:17px;font-weight:900;color:#ff69b4;white-space:nowrap}
-.empty{opacity:.5;font-size:20px;padding:8px 0}
-.small{text-align:center;color:#caa9ee;font-size:13px;margin-top:12px}
-</style>
-</head>
-<body>
-<div class="wrap"><div class="panel">
-<div class="title">🎧 FILE D’ATTENTE</div>
-<div id="content"></div>
-<div class="small">Mise à jour automatique</div>
-</div></div>
-<script>
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQYG_R47RRBiZcPcFKa91XJhQmdtkW108YKEMKyHoTsWR0NjPBQAnp9ETwgVKA4eywMPLKkFTlxNrQR/pub?gid=0&single=true&output=csv';
 
-function parseCSV(text) {
-  const rows=[]; let row=[], cell="", quoted=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i], n=text[i+1];
-    if(c === '"' && quoted && n === '"'){cell+='"';i++;continue}
-    if(c === '"'){quoted=!quoted;continue}
-    if(c === ',' && !quoted){row.push(cell);cell="";continue}
-    if((c === '\n' || c === '\r') && !quoted){
-      if(c==='\r' && n==='\n') i++;
-      row.push(cell); cell="";
-      if(row.some(x=>x.trim()!=="")) rows.push(row);
-      row=[]; continue;
-    }
-    cell+=c;
-  }
-  if(cell!=="" || row.length){row.push(cell); if(row.some(x=>x.trim()!=="")) rows.push(row)}
-  return rows;
+<style>
+body {
+  margin: 0;
+  padding: 20px;
+  background: transparent;
+  font-family: Arial, Helvetica, sans-serif;
+  color: white;
 }
 
+#content {
+  width: 100%;
+}
+
+.box {
+  margin-bottom: 12px;
+  padding: 15px 20px;
+  border-radius: 14px;
+  background: rgba(15,15,25,0.92);
+  border: 1px solid rgba(255,255,255,0.15);
+  box-sizing: border-box;
+}
+
+.current {
+  border-color: rgba(255,70,70,0.8);
+}
+
+.next {
+  border-color: rgba(170,80,255,0.8);
+}
+
+.label {
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+.artist {
+  font-size: 28px;
+  font-weight: bold;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.12);
+  font-weight: bold;
+}
+
+.name {
+  flex: 1;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.roses {
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+.empty {
+  opacity: 0.7;
+  text-align: center;
+  padding: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div id="content">
+  <div class="box">
+    <div class="empty">Connexion au tableau…</div>
+  </div>
+</div>
+
+<script>
+
+const SHEET_API = "https://script.google.com/macros/s/AKfycbxg5sRpIXQRBWb2-juGL4zRfV3Y6b0loj9g1kMVQdzL8VzFS3i1QIu-pvfnoF2kpuFN_g/exec";
+
+let lastAcceptedData = "";
+let candidateData = "";
+let candidateCount = 0;
+let previousAcceptedData = "";
+let lockOldDataUntil = 0;
+
 function esc(s) {
-  return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  return String(s).replace(/[&<>"']/g, m => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#039;'
+  }[m]));
 }
 
 function render(rows) {
-  if(!rows.length) return;
-  const headers=rows[0].map(x=>x.trim().toLowerCase());
-  const ai=headers.indexOf("artiste");
-  const ri=headers.indexOf("roses");
-  const si=headers.indexOf("statut");
-  if(ai<0) {
-    document.getElementById("content").innerHTML='<div class="box"><div class="empty">Colonne ARTISTE introuvable</div></div>';
+
+  if (!rows || !rows.length) return;
+
+  const headers = rows[0].map(x => String(x).trim().toLowerCase());
+
+  const ai = headers.indexOf("artiste");
+  const ri = headers.indexOf("roses");
+  const si = headers.indexOf("statut");
+
+  if (ai < 0) {
+    document.getElementById("content").innerHTML =
+      '<div class="box"><div class="empty">Colonne ARTISTE introuvable</div></div>';
     return;
   }
-  const artists=rows.slice(1).map((r,i)=>({
-    name:(r[ai]||"").trim(),
-    roses:ri>=0 ? (parseInt((r[ri]||"").replace(/\D/g,""))||0) : 0,
-    status:si>=0 ? (r[si]||"").trim().toLowerCase() : "en attente",
-    order:i
-  })).filter(a=>a.name);
 
-  const current=artists.find(a=>a.status==="en cours");
-  const waiting=artists.filter(a=>a.status==="en attente").sort((a,b)=>b.roses-a.roses || a.order-b.order);
-  const next=waiting[0];
-  const queue=waiting.slice(1,5);
+  const artists = rows.slice(1)
+    .map((r,i) => ({
+      name: String(r[ai] || "").trim(),
+      roses: ri >= 0
+        ? (parseInt(String(r[ri] || "").replace(/\D/g,"")) || 0)
+        : 0,
+      status: si >= 0
+        ? String(r[si] || "").trim().toLowerCase()
+        : "en attente",
+      order: i
+    }))
+    .filter(a => a.name);
 
-  const badge=a=>a&&a.roses>0?`<span class="roses">🌹 ${a.roses}</span>`:"";
-  const name=a=>a?esc(a.name):"—";
+  const current = artists.find(a => a.status === "en cours");
 
-  let html=`<div class="box current"><div class="label">🔴 EN COURS</div><div class="artist">${name(current)}</div></div>`;
-  html+=`<div class="box next"><div class="label">🟣 PROCHAIN</div><div class="artist">${name(next)} ${badge(next)}</div></div>`;
-  html+=`<div class="box">`;
-  if(queue.length) queue.forEach((a,i)=>html+=`<div class="row"><div class="num">${i+1}</div><div class="name">${name(a)}</div>${badge(a)}</div>`);
-  else html+=`<div class="empty">Aucun autre artiste en attente</div>`;
-  html+=`</div>`;
-  document.getElementById("content").innerHTML=html;
-const SHEET_API = "https://script.google.com/macros/s/AKfycbxg5sRpIXQRBWb2-juGL4zRfV3Y6b0loj9g1kMVQdzL8VzFS3i1QIu-pvfnoF2kpuFN_g/exec";
+  const waiting = artists
+    .filter(a => a.status === "en attente")
+    .sort((a,b) => b.roses - a.roses || a.order - b.order);
 
-async function update(){
-  try{
+  const next = waiting[0];
+  const queue = waiting.slice(1,5);
+
+  const badge = a =>
+    a && a.roses > 0
+      ? `<span class="roses">🌹 ${a.roses}</span>`
+      : "";
+
+  const name = a => a ? esc(a.name) : "—";
+
+  let html =
+    `<div class="box current">
+      <div class="label">🔴 EN COURS</div>
+      <div class="artist">${name(current)}</div>
+    </div>`;
+
+  html +=
+    `<div class="box next">
+      <div class="label">🟣 PROCHAIN</div>
+      <div class="artist">${name(next)} ${badge(next)}</div>
+    </div>`;
+
+  html += `<div class="box">`;
+
+  if (queue.length) {
+
+    queue.forEach((a,i) => {
+
+      html +=
+        `<div class="row">
+          <div class="num">${i+1}</div>
+          <div class="name">${name(a)}</div>
+          ${badge(a)}
+        </div>`;
+
+    });
+
+  } else {
+
+    html += `<div class="empty">Aucun autre artiste en attente</div>`;
+
+  }
+
+  html += `</div>`;
+
+  document.getElementById("content").innerHTML = html;
+}
+
+async function update() {
+
+  try {
+
     const url = SHEET_API + "?t=" + Date.now();
 
     const r = await fetch(url, {
       cache: "no-store"
     });
 
-    if(!r.ok){
+    if (!r.ok) {
       throw new Error("Erreur HTTP " + r.status);
     }
 
     const rows = await r.json();
 
-    if(!rows || !rows.length){
+    if (!rows || !rows.length) {
       throw new Error("Aucune donnée reçue");
     }
 
-    render(rows);
+    const signature = JSON.stringify(rows);
 
-  }catch(e){
+    // Première récupération
+    if (lastAcceptedData === "") {
+
+      lastAcceptedData = signature;
+      render(rows);
+      return;
+    }
+
+    // Même version
+    if (signature === lastAcceptedData) {
+
+      candidateData = "";
+      candidateCount = 0;
+      return;
+    }
+
+    // Ancienne version reçue juste après une nouvelle
+    if (
+      signature === previousAcceptedData &&
+      Date.now() < lockOldDataUntil
+    ) {
+
+      console.log("Ancienne version ignorée");
+      return;
+    }
+
+    // Nouvelle version détectée
+    if (signature === candidateData) {
+
+      candidateCount++;
+
+    } else {
+
+      candidateData = signature;
+      candidateCount = 1;
+
+    }
+
+    // Deux confirmations consécutives
+    if (candidateCount >= 2) {
+
+      previousAcceptedData = lastAcceptedData;
+
+      lockOldDataUntil = Date.now() + 60000;
+
+      lastAcceptedData = signature;
+
+      candidateData = "";
+      candidateCount = 0;
+
+      render(rows);
+    }
+
+  } catch(e) {
+
     console.error("Erreur Google Sheet :", e);
+
+    // On conserve le classement actuel.
   }
 }
 
 update();
-setInterval(update,3000);
+
+setInterval(update, 3000);
+
+</script>
+
+</body>
+</html>
