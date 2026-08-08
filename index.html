@@ -89,18 +89,11 @@ function render(rows) {
   else html+=`<div class="empty">Aucun autre artiste en attente</div>`;
   html+=`</div>`;
   document.getElementById("content").innerHTML=html;
-let lastAcceptedData = "";
-let candidateData = "";
-let candidateCount = 0;
-
-const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQYG_R47RRBiZcPcFKa91XJhQmdtkW108YKEMKyHoTsWR0NjPBQAnp9ETwgVKA4eywMPLKkFTlxNrQR/pub";
+const SHEET_API = "https://script.google.com/macros/s/AKfycbxg5sRpIXQRBWb2-juGL4zRfV3Y6b0loj9g1kMVQdzL8VzFS3i1QIu-pvfnoF2kpuFN_g/exec";
 
 async function update(){
   try{
-    const url =
-      SHEET_URL +
-      "?gid=0&single=true&output=csv&t=" +
-      Date.now();
+    const url = SHEET_API + "?t=" + Date.now();
 
     const r = await fetch(url, {
       cache: "no-store"
@@ -110,39 +103,13 @@ async function update(){
       throw new Error("Erreur HTTP " + r.status);
     }
 
-    const t = await r.text();
-    const rows = parseCSV(t);
+    const rows = await r.json();
 
-    if(!rows.length) return;
-
-    const signature = JSON.stringify(rows);
-
-    if(lastAcceptedData === ""){
-      lastAcceptedData = signature;
-      render(rows);
-      return;
+    if(!rows || !rows.length){
+      throw new Error("Aucune donnée reçue");
     }
 
-    if(signature === lastAcceptedData){
-      candidateData = "";
-      candidateCount = 0;
-      return;
-    }
-
-    if(signature === candidateData){
-      candidateCount++;
-    }else{
-      candidateData = signature;
-      candidateCount = 1;
-    }
-
-    if(candidateCount >= 2){
-      lastAcceptedData = signature;
-      candidateData = "";
-      candidateCount = 0;
-
-      render(rows);
-    }
+    render(rows);
 
   }catch(e){
     console.error("Erreur Google Sheet :", e);
